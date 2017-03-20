@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace SE {
@@ -7,6 +8,7 @@ namespace SE {
 		public Vector3[] vertices;
 		public Vector3[] normals;
 		public int[] triangles;
+		public List<Vector4> uvs;
 	}
 	public struct GridCell {
 		public Point[] points;
