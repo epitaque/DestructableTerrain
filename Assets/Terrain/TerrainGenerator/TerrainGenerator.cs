@@ -21,25 +21,15 @@ public class TerrainGenerator : MonoBehaviour {
 	private Hashtable Chunks = new Hashtable();
 	private Vector3 startPos;
 	private long seed;
-	private ThreadedChunkGenerator threadedChunkGenerator;
-
-	static float sampler(Vector3 position) {
-		float r = 0.3f;
-
-		return 10.0f - position.y + 
-			//Mathf.Sin(position.x) + Mathf.Sin(position.z);
-			(float)gen.Evaluate((float)position.x*r, (float)position.y*r, (float)position.z*r) * 3;
-	}
+	private MultiThreadedChunkGenerator threadedChunkGenerator;
 
 	// Use this for initialization
 	void Start () {
 		seed = DateTime.Now.Ticks;
 		gen = new SE.OpenSimplexNoise(seed);
-		threadedChunkGenerator = new ThreadedChunkGenerator();
+		threadedChunkGenerator = new MultiThreadedChunkGenerator(4);
 		float r = 0.3f;
 		MaterialsArray = MaterialsList.GetComponent<MaterialsList>().GetArray();
-		//CreateChunk(0, 0, 0, sampler);
-		//CreateChunk(0, 0, 16, sampler);
 		startPos = Vector3.zero;
 		ManageChunks();
 	}
@@ -65,13 +55,11 @@ public class TerrainGenerator : MonoBehaviour {
 				string key = pos.ToString();
 
 				if(!Chunks.ContainsKey(key)) {
-					CreateChunk((int)pos.x - resolution / 2, (int)pos.y, (int)pos.z - resolution / 2, key, sampler);
+					CreateChunk((int)pos.x - resolution / 2, (int)pos.y, (int)pos.z - resolution / 2, key);
 				}
 				(Chunks[key] as Chunk).CreationTime = updateTime;
 			}
 		}
-
-		print("i incremented " + i + " times");
 
 		Hashtable newTerrain = new Hashtable();
 		foreach(Chunk c in Chunks.Values) {
@@ -97,15 +85,11 @@ public class TerrainGenerator : MonoBehaviour {
 
 	private float maxZSampled = float.MinValue;
 
-	void CreateChunk(int x, int y, int z, string key, SE.Sample fn) {
+	void CreateChunk(int x, int y, int z, string key) {
 		Chunk newChunk = new Chunk();
 		newChunk.Size = resolution;
 		newChunk.Min = new Vector3(x, y, z);
-		newChunk.Densities = new DT.DensityChunk(resolution, (Vector3 position) => { 
-				Vector3 samplePos = position + newChunk.Min;
-				return fn(samplePos); 
-			});
-		newChunk.Object = InstantiateChunkGameObject(SE.MarchingCubes.March(resolution, 0f, newChunk.Densities.Density, true), newChunk.Min);
+		newChunk.Object = InstantiateChunkGameObject(newChunk.Min);
 		newChunk.Key = key;
 		Chunks.Add(newChunk.Key, newChunk);
 
@@ -130,7 +114,7 @@ public class TerrainGenerator : MonoBehaviour {
 
 	// updates chunk's gameobject based on its densitychunk
 	void BuildChunk(Chunk chunk) {
-		SE.Mesh m = SE.MarchingCubes.March(chunk.Size, 0f, chunk.Densities.Density, true);
+ 		SE.Mesh m = SE.MarchingCubes.March(0f, chunk.Densities);
 		UpdateChunk(chunk.Object, m);
 	}
 
@@ -139,11 +123,12 @@ public class TerrainGenerator : MonoBehaviour {
 		MeshFilter mf = chunkObject.GetComponent<MeshFilter>();
 		MeshCollider mc = chunkObject.GetComponent<MeshCollider>();
 
+		mf.mesh.Clear();
+
 		mf.mesh.vertices = m.vertices;
 		mf.mesh.triangles = m.triangles;
 		if(m.normals != null) mf.mesh.normals = m.normals;
 		else mf.mesh.RecalculateNormals();
-		mf.mesh.UploadMeshData(false);
 		mc.sharedMesh = mf.mesh;
 		mf.mesh.RecalculateBounds();
 	}
@@ -155,7 +140,7 @@ public class TerrainGenerator : MonoBehaviour {
 		mat.SetFloat("_Resolution", resolution);
 	}
 
-	private GameObject InstantiateChunkGameObject(SE.Mesh m, Vector3 offset) {
+	private GameObject InstantiateChunkGameObject(Vector3 offset) {
 		print("InstantiateChunkGameObject called");
 
 		GameObject gameObject = Instantiate(ChunkPrefab, offset, Quaternion.identity);
@@ -169,17 +154,19 @@ public class TerrainGenerator : MonoBehaviour {
 	// Update is called once per frame
 	void Update () {
 		if (Input.GetMouseButton(0)) {
-			deformTerrain();
+			deformTerrain(false);
+		}
+		if (Input.GetMouseButton(1)) {
+			deformTerrain(true);
 		}
 		CheckIfChunksLoaded();
 		CheckIfNeedManageChunks();
+		threadedChunkGenerator.Update();
 	}
 
 	void CheckIfChunksLoaded() {
-		//print("loadedChunks count: " + threadedChunkGenerator.loadedChunks.Count);
 		if(threadedChunkGenerator.loadedChunks.Count > 0) {
 			ChunkProcessOutput c = (ChunkProcessOutput)threadedChunkGenerator.loadedChunks.Dequeue(); // at most 1 per frame
-			print("Dequeuing tile " + c.key);
 			ProcessChunkOutput(c);
 		}
 
@@ -187,22 +174,58 @@ public class TerrainGenerator : MonoBehaviour {
 
 	void ProcessChunkOutput(ChunkProcessOutput output) {
 		if(Chunks.Contains(output.key)) {
+			print("Chunk generation time: " + output.processingTime);
 			Chunk chunk = (Chunk)Chunks[output.key];
 			chunk.Densities = output.densities;
 			UpdateChunk(chunk.Object, output.mesh);
 		}
 	}
 
-	void deformTerrain() {
+	void deformTerrain(bool additive) {
+		int deformRadius = 2;
+		float hardness = 0.5f;
+
         RaycastHit hit;
-		int x = (Screen.width / 2);
-		int y = (Screen.height / 2);
-		Ray ray = Camera.main.ScreenPointToRay(new Vector3(x, y, 0));
+		int screenX = (Screen.width / 2);
+		int screenY = (Screen.height / 2);
+		Ray ray = Camera.main.ScreenPointToRay(new Vector3(screenX, screenY, 0));
 
         if (!Physics.Raycast(ray, out hit, 500)) {
             return;
 		}
 		
-		//TerrainDeformer.SphericalDeform(hit.point, )
+		// generate list of affected chunks
+
+		Vector3 hitPos = hit.point;
+
+		Vector3 minPosition = hitPos - (float)deformRadius * Vector3.one;
+		Vector3 maxPosition = hitPos + (float)deformRadius * Vector3.one;
+
+		Vector3 flooredMinPos = new Vector3(Mathf.Floor(minPosition.x/resolution)*resolution, 
+			Mathf.Floor(minPosition.y/resolution)*resolution, 
+			Mathf.Floor(minPosition.z/resolution)*resolution);
+
+		Vector3 ceiledMaxPos = new Vector3(Mathf.Ceil(minPosition.x/resolution)*resolution, 
+			Mathf.Ceil(minPosition.y/resolution)*resolution, 
+			Mathf.Ceil(minPosition.z/resolution)*resolution);
+
+		Vector3 currentPosition;
+		List<string> affectedChunks = new List<string>();
+
+		for(int x = (int)flooredMinPos.x; x <= ceiledMaxPos.x; x += resolution) {
+			for(int y = (int)flooredMinPos.y; y <= ceiledMaxPos.y; y += resolution) {
+				for(int z = (int)flooredMinPos.z; z <= ceiledMaxPos.z; z+= resolution) {
+					currentPosition = new Vector3(x, y, z);
+					affectedChunks.Add(currentPosition.ToString());
+				}
+			}
+		}
+
+		foreach(string key in affectedChunks) {
+			if(Chunks.Contains(key)) {
+				TerrainDeformer.SphericalDeform(hit.point, (Chunk)Chunks[key], 0, deformRadius, hardness, additive);
+				BuildChunk((Chunk)Chunks[key]);
+			}
+		}
 	}
 }

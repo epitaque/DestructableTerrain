@@ -8,10 +8,17 @@ namespace SE {
 		public static readonly Vector3[] OFFSETS = {
 			new Vector3(0f,0f,0f), new Vector3(1f,0f,0f), new Vector3(1f,1f,0f), new Vector3(0f,1f,0f), 
 			new Vector3(0f,0f,1f), new Vector3(1f,0f,1f), new Vector3(1f,1f,1f), new Vector3(0f,1f,1f) };	
+		public static readonly int[,] IntegerOFFSETS = {
+			{0,0,0}, {1,0,0}, {1,1,0}, {0,1,0}, 
+			{0,0,1}, {1,0,1}, {1,1,1}, {0,1,1} };	
 
 		public static SE.Mesh March(int resolution, float isovalue, Sample sample, bool flatShading) {
 			if(flatShading == true) return MarchFlatShading(resolution, isovalue, sample);
 			else return MarchEfficient(resolution, isovalue, sample);
+		}
+
+		public static SE.Mesh March(float isovalue, DT.DensityChunk c) {
+			return MarchDensityChunk(isovalue, c);
 		}
 
 		private static SE.Mesh MarchEfficient(int resolution, float isovalue, Sample sample) {
@@ -152,6 +159,38 @@ namespace SE {
 			return mesh;
 		}
 
+		private static SE.Mesh MarchDensityChunk(float isovalue, DT.DensityChunk c) {
+			Mesh mesh = new Mesh();
+			GridCell cell = new GridCell();
+			cell.points = new Point[8];
+			for(int i = 0; i < 8; i++) {
+				cell.points[i] = new Point();
+				cell.points[i].position = new Vector3();
+			}
+
+			List<Vector3> vertices = new List<Vector3>();
+
+			for(int x = 0; x < c.GridSize - 1; x++) {
+				for(int y = 0; y < c.GridSize - 1; y++) {
+					for(int z = 0; z < c.GridSize - 1; z++) {
+						for(int i = 0; i < 8; i++) {
+							cell.points[i].position.Set(x + OFFSETS[i].x, y + OFFSETS[i].y, z + OFFSETS[i].z);
+							cell.points[i].density = c.Grid[IntegerOFFSETS[i,0] + x,IntegerOFFSETS[i,1] + y,IntegerOFFSETS[i,2] + z].Density;
+						}
+						Polyganizer.PolyganizeGridCell(cell, vertices, isovalue);
+					}
+				}
+			}
+
+			int[] triangles = new int[vertices.Count];
+			for(int i = 0; i < vertices.Count; i ++) {
+				triangles[i] = i;
+			}
+
+			mesh.vertices = vertices.ToArray();
+			mesh.triangles = triangles;
+			return mesh;
+		}
 	}
 
 }

@@ -2,7 +2,7 @@ using UnityEngine;
 using System.Collections.Generic;
 
 namespace SE {
-	public static class Polyganizer2 {
+	public static class Polyganizer {
 
 		static Vector3[] vertlist = new Vector3[12];
 		public static void PolyganizeGridCell(GridCell cell, List<Vector3> vertices, float isovalue)

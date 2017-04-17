@@ -11,13 +11,14 @@ public static class ChunkGenerator {
 		Stopwatch s = new Stopwatch();
 		s.Start();
 
-		SE.OpenSimplexNoise noise = new SE.OpenSimplexNoise(input.seed);
+		SE.OpenSimplexNoise noise = new SE.OpenSimplexNoise(0);
 
 		ChunkProcessOutput output = new ChunkProcessOutput();
 
+		output.threadId = input.threadId;
 		output.key = input.key;
 		output.densities = new DT.DensityChunk(input.size, (Vector3 position) => sample(noise, position + input.min));
-		SE.Mesh m = SEM.MarchingCubes.March(input.size, 0f, output.densities.Density, true);
+		SE.Mesh m = SE.MarchingCubes.March(0f, output.densities);
 		m.normals = NormalSolver.RecalculateNormals(m.triangles, m.vertices, 60);
 		m.uvs = SetMeshUVs(m);
 		FixNormals(m);
