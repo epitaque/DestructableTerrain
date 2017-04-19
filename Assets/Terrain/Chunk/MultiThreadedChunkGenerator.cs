@@ -16,8 +16,6 @@ public class MultiThreadedChunkGenerator {
 	int frameNum = 0;
 
 	public void Update() {
-		frameNum++;
-		if(frameNum % 50 != 0) return;
 		if(unloadedChunks.Count > 0) {
 			for(int i = 0; i < numThreads; i++) {
 				if(!busyThreads[i]) {
@@ -25,7 +23,7 @@ public class MultiThreadedChunkGenerator {
 					ChunkProcessInput inp = (ChunkProcessInput)unloadedChunks.Dequeue();
 					inp.threadId = i;
 					BackgroundWorkers[i].RunWorkerAsync(inp);
-					//Update();
+					Update();
 				}
 			}
 		}
@@ -68,8 +66,6 @@ public class MultiThreadedChunkGenerator {
 
 	private void BackgroundWorkers_RunWorkerCompleted_ThreadedGenerateChunk (System.Object sender,  
 		System.ComponentModel.RunWorkerCompletedEventArgs e) {  
-
-		UnityEngine.Debug.Log("Worker completed. e: " + e.ToString());
         if(e.Error != null)
         {
             UnityEngine.Debug.LogError("There was an error! " + e.Error.ToString());
@@ -81,7 +77,7 @@ public class MultiThreadedChunkGenerator {
 			busyThreads[result.threadId] = false;
 
 			if(unloadedChunks.Count > 0) {
-				//Update();
+				Update();
 			}
 		}
 	}  

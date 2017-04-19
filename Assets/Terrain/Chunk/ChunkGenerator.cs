@@ -7,12 +7,9 @@ using UnityEngine;
 namespace DT {
 public static class ChunkGenerator {
 	public static ChunkProcessOutput CreateChunk(ChunkProcessInput input) {
-		UnityEngine.Debug.Log("CreateChunk started");
 		Stopwatch s = new Stopwatch();
 		s.Start();
-
 		SE.OpenSimplexNoise noise = new SE.OpenSimplexNoise(0);
-
 		ChunkProcessOutput output = new ChunkProcessOutput();
 
 		output.threadId = input.threadId;
@@ -21,14 +18,16 @@ public static class ChunkGenerator {
 		SE.Mesh m = SE.MarchingCubes.March(0f, output.densities);
 		m.normals = NormalSolver.RecalculateNormals(m.triangles, m.vertices, 60);
 		m.uvs = SetMeshUVs(m);
-		FixNormals(m);
+		//FixNormals(m);
 		output.mesh = m;
-		s.Stop();
+		s.Stop();	
 		output.processingTime = s.ElapsedMilliseconds;
 		return output;
 	}
 
 	public static List<Vector4> SetMeshUVs(SE.Mesh m) {
+		System.Random RNG = new System.Random();
+
 		if(m.triangles.Length != m.vertices.Length) {
 			UnityEngine.Debug.LogError("Terrain mesh has an unequal number of triangle indices and vertices");
 		}
@@ -39,7 +38,8 @@ public static class ChunkGenerator {
 		for(int i = 0; i < m.vertices.Length; i += 3) {
 			for(int j = 0; j < 3; j++) {
 				intensity = 1f - Mathf.Clamp(Mathf.Pow(m.normals[i + j].y, 3), 0f, 1f);
-				UV1s.Add(new Vector4(0f, 1f, intensity, 0));
+				intensity = (float)RNG.Next(100) / 100f;
+				UV1s.Add(new Vector4(0f, 1f, intensity, 0)); 
 			}
 		}
 
@@ -82,8 +82,10 @@ public static class ChunkGenerator {
 
 	private static float sample(SE.OpenSimplexNoise noise, Vector3 position) {
 		float r = 0.3f;
+		float z = 0.03f;
 		float result = 10.0f - position.y;
-		result += (float)noise.Evaluate((float)position.x*r, (float)position.y*r, (float)position.z*r) * 3;
+		result += (float)noise.Evaluate(position.x*r, position.y*r, position.z*r) * 0.1f;
+		result += (float)noise.Evaluate(position.x*z, position.y*z, position.z*z) * 20f;
 		return result;
 	}
 }

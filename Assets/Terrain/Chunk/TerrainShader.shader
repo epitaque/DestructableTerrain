@@ -1,13 +1,12 @@
 ﻿Shader "Custom/TerrainShader" {
 	Properties {
-		_Glossiness ("Smoothness", Range(0,1)) = 0.5
-		_Metallic ("Metallic", Range(0,1)) = 0.0
-
 		// Custom Properties
 		_Scale ("Scale", Float) = 1.0
-		_Materials ("Materials", 2DArray) = "" {}
-		_Resolution ("Resolution", Int) = 32
-		_Density ("Density", Int) = 4
+		_Albedos ("Albedos", 2DArray) = "" {}
+		_AOs ("AOs", 2DArray) = "" {}
+		_Heights ("Heights", 2DArray) = "" {}
+		_Metalnesses ("Metalnesses", 2DArray) = "" {}
+		_Normals ("Normals", 2DArray) = "" {}
 	}
 	SubShader {
 		Tags { "RenderType"="Opaque" }
@@ -21,13 +20,13 @@
 		//#pragma surface surf Standard fullforwardshadows
 
 		float4 _Color : COLOR;
-		UNITY_DECLARE_TEX2DARRAY(_Materials);		
-		sampler2D _MainTex;
-		float _Glossiness;
-		float _Metallic;
+		UNITY_DECLARE_TEX2DARRAY(_Albedos);	
+		UNITY_DECLARE_TEX2DARRAY(_AOs);		
+		UNITY_DECLARE_TEX2DARRAY(_Heights);		
+		UNITY_DECLARE_TEX2DARRAY(_Metalnesses);		
+		UNITY_DECLARE_TEX2DARRAY(_Normals);		
+	
 		float _Scale;
-		int _Resolution;
-		int _Density;
 
 		struct vertexdata {
 			float4 vertex : POSITION;
@@ -82,18 +81,28 @@
  
 			texCoords = texCoords * _Scale;
 
-			float4 topColor = UNITY_SAMPLE_TEX2DARRAY(_Materials, float3(texCoords, IN.matID1));
-			float4 botColor = UNITY_SAMPLE_TEX2DARRAY(_Materials, float3(texCoords, IN.matID2));
-			//botColor = UNITY_SAMPLE_TEX2DARRAY(_Materials, float3(texCoords, 1));
+			float4 topAlbedo = UNITY_SAMPLE_TEX2DARRAY(_Albedos, float3(texCoords, IN.matID1));
+			float4 topAO = UNITY_SAMPLE_TEX2DARRAY(_AOs, float3(texCoords, IN.matID1));
+			float4 topHeight = UNITY_SAMPLE_TEX2DARRAY(_Heights, float3(texCoords, IN.matID1));
+			float4 topMetalness = UNITY_SAMPLE_TEX2DARRAY(_Metalnesses, float3(texCoords, IN.matID1));
+			float4 topNormal = UNITY_SAMPLE_TEX2DARRAY(_Normals, float3(texCoords, IN.matID1));
 
-			float4 finalColor = (topColor * (1 - IN.intensity)) + (botColor * IN.intensity);
+			float4 botAlbedo = UNITY_SAMPLE_TEX2DARRAY(_Albedos, float3(texCoords, IN.matID2));
+			float4 botAO = UNITY_SAMPLE_TEX2DARRAY(_AOs, float3(texCoords, IN.matID2));
+			float4 botHeight = UNITY_SAMPLE_TEX2DARRAY(_Heights, float3(texCoords, IN.matID2));
+			float4 botMetalness = UNITY_SAMPLE_TEX2DARRAY(_Metalnesses, float3(texCoords, IN.matID2));
+			float4 botNormal = UNITY_SAMPLE_TEX2DARRAY(_Normals, float3(texCoords, IN.matID2));
 
-			//float3 finalColor = blend(topColor, IN.intensity, botColor, 1.0 - IN.intensity);
+			float4 finalAlbedo = (topAlbedo * (IN.intensity)) + (botAlbedo * (1.0 - IN.intensity));
+			float4 finalAO = (topAO * (IN.intensity)) + (botAO * (1.0 - IN.intensity));
+			float4 finalHeight = (topHeight * (IN.intensity)) + (botHeight * (1.0 - IN.intensity));
+			float4 finalMetalness = (topMetalness * (IN.intensity)) + (botMetalness * (1.0 - IN.intensity));
+			float4 finalNormal = (topNormal * (IN.intensity)) + (botNormal * (1.0 - IN.intensity));
 
-			fixed4 c = finalColor;//fixed4(finalColor, 1);
+			fixed4 c = finalAlbedo;
 			o.Albedo = c.xyz; 
-			o.Metallic = _Metallic;
-			o.Smoothness = _Glossiness;
+			o.Metallic = finalMetalness.xyz;
+			o.Smoothness = finalNormal.xyz;
 			o.Alpha = c.a;
 		}
 		ENDCG

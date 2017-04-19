@@ -22,6 +22,7 @@ public class TerrainGenerator : MonoBehaviour {
 	private Vector3 startPos;
 	private long seed;
 	private MultiThreadedChunkGenerator threadedChunkGenerator;
+	private MaterialsList mats;
 
 	// Use this for initialization
 	void Start () {
@@ -29,7 +30,7 @@ public class TerrainGenerator : MonoBehaviour {
 		gen = new SE.OpenSimplexNoise(seed);
 		threadedChunkGenerator = new MultiThreadedChunkGenerator(4);
 		float r = 0.3f;
-		MaterialsArray = MaterialsList.GetComponent<MaterialsList>().GetArray();
+		mats = MaterialsList.GetComponent<MaterialsList>();
 		startPos = Vector3.zero;
 		ManageChunks();
 	}
@@ -43,21 +44,25 @@ public class TerrainGenerator : MonoBehaviour {
 
 		int playerX = (int)(Mathf.Floor(Player.transform.position.x/resolution)*resolution);
 		int playerZ = (int)(Mathf.Floor(Player.transform.position.z/resolution)*resolution);
+		int playerY = (int)(Mathf.Floor(Player.transform.position.y/resolution)*resolution);
 
 		int hres = resolution/2;
 
 		int i = 0;
 		for(int x = -radius - 1; x <= radius + 1; x++) {
-			for(int z = -radius - 1; z <= radius + 1; z++) {
-				i++;
-				Vector3 pos = new Vector3(((x * resolution) + playerX), 0, ((z * resolution) + playerZ));
-				if(Vector3.Distance(new Vector3(pos.x + hres, 0, pos.z + hres), new Vector3(playerX + resolution, 0, playerZ + resolution)) > radius * resolution) continue;
-				string key = pos.ToString();
+			for(int y = -radius - 1; y <= radius + 1; y++) {
+				for(int z = -radius - 1; z <= radius + 1; z++) {
+					i++;
+					Vector3 pos = new Vector3((x * resolution) + playerX, (y * resolution) + playerY, (z * resolution) + playerZ);
+					if(Vector3.Distance(new Vector3(pos.x + hres, pos.y + hres, pos.z + hres), new Vector3(playerX + resolution, playerY + resolution, playerZ + resolution)) > radius * resolution) continue;
+					string key = pos.ToString();
 
-				if(!Chunks.ContainsKey(key)) {
-					CreateChunk((int)pos.x - resolution / 2, (int)pos.y, (int)pos.z - resolution / 2, key);
+					if(!Chunks.ContainsKey(key)) {
+						CreateChunk((int)pos.x - resolution / 2, (int)pos.y - resolution / 2, (int)pos.z - resolution / 2, key);
+					}
+					(Chunks[key] as Chunk).CreationTime = updateTime;
 				}
-				(Chunks[key] as Chunk).CreationTime = updateTime;
+
 			}
 		}
 
@@ -114,7 +119,12 @@ public class TerrainGenerator : MonoBehaviour {
 
 	// updates chunk's gameobject based on its densitychunk
 	void BuildChunk(Chunk chunk) {
+		if(chunk == null || chunk.Densities == null) return;
  		SE.Mesh m = SE.MarchingCubes.March(0f, chunk.Densities);
+		if(m == null) return;
+
+		//m.normals = NormalSolver.RecalculateNormals(m.triangles, m.vertices, 30f);
+		//SE.Utilities.FixNormals(m);
 		UpdateChunk(chunk.Object, m);
 	}
 
@@ -136,13 +146,16 @@ public class TerrainGenerator : MonoBehaviour {
 	void InitializeChunkGameObject(GameObject gameObject) {
 		Material mat = gameObject.GetComponent<Renderer>().materials[0];
 
-		mat.SetTexture("_Materials", MaterialsArray);
+		mat.SetTexture("_Albedos", mats.Albedos);
+		mat.SetTexture("_AOs", mats.AOs);
+		mat.SetTexture("_Heights", mats.Heights);
+		mat.SetTexture("_Metalnesses", mats.Metalnesses);
+		mat.SetTexture("_Normals", mats.Normals);
+
 		mat.SetFloat("_Resolution", resolution);
 	}
 
 	private GameObject InstantiateChunkGameObject(Vector3 offset) {
-		print("InstantiateChunkGameObject called");
-
 		GameObject gameObject = Instantiate(ChunkPrefab, offset, Quaternion.identity);
 		gameObject.transform.SetParent(transform);
 
@@ -166,7 +179,8 @@ public class TerrainGenerator : MonoBehaviour {
 
 	void CheckIfChunksLoaded() {
 		if(threadedChunkGenerator.loadedChunks.Count > 0) {
-			ChunkProcessOutput c = (ChunkProcessOutput)threadedChunkGenerator.loadedChunks.Dequeue(); // at most 1 per frame
+			ChunkProcessOutput c = (ChunkProcessOutput)(threadedChunkGenerator.loadedChunks.Dequeue()); // at most 1 per frame
+			if(c == null) return;
 			ProcessChunkOutput(c);
 		}
 
@@ -222,7 +236,7 @@ public class TerrainGenerator : MonoBehaviour {
 		}
 
 		foreach(string key in affectedChunks) {
-			if(Chunks.Contains(key)) {
+			if(Chunks.Contains(key) && (Chunk)Chunks[key] != null && ((Chunk)(Chunks[key])).Densities != null) {
 				TerrainDeformer.SphericalDeform(hit.point, (Chunk)Chunks[key], 0, deformRadius, hardness, additive);
 				BuildChunk((Chunk)Chunks[key]);
 			}

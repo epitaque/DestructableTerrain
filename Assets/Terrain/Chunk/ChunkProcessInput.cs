@@ -1,7 +1,7 @@
 using UnityEngine;
 
 namespace DT {
-public struct ChunkProcessInput {
+public class ChunkProcessInput {
 	public int size;
 	public int threadId;
 	public long seed;
